@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>تحدي الحروف - النمط العادي</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* تعديلات خاصة بالنمط العادي */
+        .game-container {
+            max-width: 900px;
+            margin: 20px auto;
+        }
+        .board-wrapper {
+            margin: 10px 0;
+        }
+        .scores-panel {
+            display: flex;
+            justify-content: space-between;
+            gap: 30px;
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 60px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .score-item {
+            text-align: center;
+        }
+        .score-label {
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+        .score-value {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--gold);
+        }
+        .modal-content {
+            padding: 25px 20px;
+        }
+        .btn-reset {
+            background: #1e3a5f;
+            color: white;
+            border: none;
+            padding: 15px 35px;
+            border-radius: 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #0f2333;
+            transition: 0.1s;
+            margin-top: 20px;
+        }
+        .btn-reset:active {
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #0f2333;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <h1 style="text-align:center; color:var(--gold); margin:10px 0;">🏆 تحدي الحروف (محلي)</h1>
+    
+    <div class="scores-panel">
+        <div class="score-item">
+            <div class="score-label" style="color:var(--a);">🔵 الأزرق</div>
+            <div class="score-value" id="blue-score">0</div>
+        </div>
+        <div class="score-item">
+            <div class="score-label" style="color:var(--b);">🔴 الأحمر</div>
+            <div class="score-value" id="red-score">0</div>
+        </div>
+    </div>
+
+    <div class="board-wrapper">
+        <div id="hex-board"></div>
+    </div>
+
+    <button class="btn-reset" onclick="resetGame()">🔄 جولة جديدة</button>
+</div>
+
+<!-- نافذة السؤال (بوب اب) -->
+<div id="overlay" class="overlay"></div>
+<div id="q-modal" class="modal">
+    <div class="modal-content">
+        <h2 id="q-title" style="color:#0f2a3f;">✨ سؤال حرف</h2>
+        <p id="q-text"></p>
+        <div class="timer" id="timer">20</div>
+        
+        <div id="q-display-area">
+            <div id="ans-box" class="ans-box">
+                ✅ الإجابة: <span id="ans-text"></span>
+            </div>
+            <div class="btn-group">
+                <button class="btn-main" onclick="showAnswer()">🔍 إظهار الإجابة</button>
+                <button class="btn-blue" onclick="mark('blue')">🔵 فوز الأزرق</button>
+                <button class="btn-red" onclick="mark('red')">🔴 فوز الأحمر</button>
+                <button class="btn-change" onclick="changeQuestion()">🔄 تغيير السؤال</button>
+                <button class="btn-close" onclick="closeModals()">❌ إغلاق</button>
+            </div>
+        </div>
+
+        <div id="q-add-area" style="display:none;">
+            <p style="color:#e74c3c; font-weight:bold;">⚠️ لا توجد أسئلة! أضف سؤالاً:</p>
+            <textarea id="new-q" rows="3" placeholder="اكتب السؤال هنا..."></textarea>
+            <input type="text" id="new-a" placeholder="الإجابة الصحيحة">
+            <button class="btn-main" onclick="saveNewQuestion()">💾 حفظ واللعب</button>
+            <button class="btn-close" onclick="closeModals()">إلغاء</button>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة الفوز -->
+<div id="win-modal" class="modal">
+    <div style="font-size:5rem;">🏅</div>
+    <h2 id="win-msg" style="color:#0f2a3f;">فوز رائع!</h2>
+    <button class="btn-reset" onclick="resetGame()">🎮 جولة جديدة</button>
+    <button class="btn-close" onclick="closeWinModal()" style="background:#bdc3c7;">إغلاق</button>
+</div>
+
+<script src="qbank.js"></script>
+<script>
+    (function(){
+        "use strict";
+        
+        const SIZE = 5;
+        let boardState = Array(SIZE * SIZE).fill(null);
+        let questionBank = JSON.parse(localStorage.getItem('fullQuestionBank')) || QBANK;
+        const lettersList = Object.keys(QBANK).sort(() => 0.5 - Math.random()).slice(0, 25);
+        let currentIdx = null, currentChar = '', timerInt = null;
+        let scores = { blue: 0, red: 0 };
+
+        function updateScoreUI() {
+            document.getElementById('blue-score').innerText = scores.blue;
+            document.getElementById('red-score').innerText = scores.red;
+        }
+
+        function init() {
+            const board = document.getElementById('hex-board');
+            board.innerHTML = '';
+            boardState = Array(SIZE * SIZE).fill(null);
+            
+            const shuffled = [...lettersList].sort(() => 0.5 - Math.random());
+            
+            shuffled.forEach((char, i) => {
+                const cell = document.createElement('div');
+                cell.className = 'hex';
+                cell.textContent = char;
+                cell.dataset.index = i;
+                cell.onclick = () => openModal(i, char);
+                board.appendChild(cell);
+            });
+        }
+
+        function openModal(idx, char) {
+            if (boardState[idx]) return;
+            currentIdx = idx; currentChar = char;
+            updateQuestionDisplay(char);
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById('q-modal').style.display = 'block';
+            startTimer();
+        }
+
+        function updateQuestionDisplay(char) {
+            document.getElementById('q-title').textContent = `✨ سؤال حرف ( ${char} )`;
+            const list = questionBank[char] || [];
+            if (list.length) {
+                const randomQ = list[Math.floor(Math.random() * list.length)];
+                document.getElementById('q-text').textContent = randomQ.q;
+                document.getElementById('ans-text').textContent = randomQ.a;
+                document.getElementById('q-display-area').style.display = 'block';
+                document.getElementById('q-add-area').style.display = 'none';
+            } else {
+                document.getElementById('q-display-area').style.display = 'none';
+                document.getElementById('q-add-area').style.display = 'block';
+            }
+            document.getElementById('ans-box').style.display = 'none';
+        }
+
+        window.changeQuestion = function() {
+            if (!currentChar) return;
+            const list = questionBank[currentChar];
+            if (!list?.length) return alert('لا توجد أسئلة أخرى.');
+            const randomQ = list[Math.floor(Math.random() * list.length)];
+            document.getElementById('q-text').textContent = randomQ.q;
+            document.getElementById('ans-text').textContent = randomQ.a;
+            document.getElementById('ans-box').style.display = 'none';
+            clearInterval(timerInt);
+            startTimer();
+        };
+
+        function startTimer() {
+            let t = 20;
+            const timerEl = document.getElementById('timer');
+            timerEl.textContent = t;
+            clearInterval(timerInt);
+            timerInt = setInterval(() => {
+                t--;
+                timerEl.textContent = t;
+                if (t <= 0) {
+                    clearInterval(timerInt);
+                    showAnswer();
+                }
+            }, 1000);
+        }
+
+        window.showAnswer = function() {
+            clearInterval(timerInt);
+            document.getElementById('ans-box').style.display = 'block';
+        };
+
+        window.saveNewQuestion = function() {
+            const q = document.getElementById('new-q').value.trim();
+            const a = document.getElementById('new-a').value.trim();
+            if (!q || !a) return alert('الرجاء كتابة السؤال والإجابة!');
+            if (!questionBank[currentChar]) questionBank[currentChar] = [];
+            questionBank[currentChar].push({ q, a });
+            localStorage.setItem('fullQuestionBank', JSON.stringify(questionBank));
+            document.getElementById('new-q').value = '';
+            document.getElementById('new-a').value = '';
+            openModal(currentIdx, currentChar);
+        };
+
+        window.mark = function(team) {
+            clearInterval(timerInt);
+            boardState[currentIdx] = team;
+            const cells = document.querySelectorAll('.hex');
+            cells[currentIdx].classList.add(team === 'blue' ? 'owned-a' : 'owned-b');
+            cells[currentIdx].onclick = null;
+            
+            if (team === 'blue') scores.blue++;
+            else scores.red++;
+            updateScoreUI();
+            
+            closeModals();
+            checkVictory(team);
+        };
+
+        function getHexNeighbors(idx) {
+            const r = Math.floor(idx / SIZE), c = idx % SIZE;
+            const isEven = (r % 2 === 0);
+            const dirs = isEven ? [[-1,0],[1,0],[0,-1],[0,1],[-1,1],[1,1]] : [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1]];
+            return dirs.map(([dr,dc]) => [r+dr, c+dc]).filter(([nr,nc]) => nr>=0 && nr<SIZE && nc>=0 && nc<SIZE).map(([nr,nc])=> nr*SIZE+nc);
+        }
+
+        function checkVictory(team) {
+            const visited = Array(SIZE*SIZE).fill(false), queue = [];
+            if (team === 'blue') {
+                for (let c=0; c<SIZE; c++) if (boardState[c]==='blue') { queue.push(c); visited[c]=true; }
+                while (queue.length) {
+                    const cur = queue.shift();
+                    if (Math.floor(cur/SIZE) === SIZE-1) { announce("🔵 الفريق الأزرق فاز!"); return; }
+                    getHexNeighbors(cur).forEach(n => { if (!visited[n] && boardState[n]==='blue') { visited[n]=true; queue.push(n); } });
+                }
+            } else {
+                for (let r=0; r<SIZE; r++) if (boardState[r*SIZE]==='red') { queue.push(r*SIZE); visited[r*SIZE]=true; }
+                while (queue.length) {
+                    const cur = queue.shift();
+                    if (cur%SIZE === SIZE-1) { announce("🔴 الفريق الأحمر فاز!"); return; }
+                    getHexNeighbors(cur).forEach(n => { if (!visited[n] && boardState[n]==='red') { visited[n]=true; queue.push(n); } });
+                }
+            }
+        }
+
+        function announce(msg) {
+            document.getElementById('win-msg').textContent = msg;
+            document.getElementById('win-modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+        }
+
+        window.closeModals = function() {
+            clearInterval(timerInt);
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('q-modal').style.display = 'none';
+        };
+
+        window.closeWinModal = function() {
+            document.getElementById('win-modal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+        };
+
+        window.resetGame = function() {
+            closeModals();
+            closeWinModal();
+            scores = { blue: 0, red: 0 };
+            updateScoreUI();
+            init();
+        };
+
+        window.onload = init;
+    })();
+</script>
+</body>
+</html>
